@@ -19,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 
+// Modified AuthButton.tsx with direct navigation
 export default function AuthButton() {
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -52,6 +53,7 @@ export default function AuthButton() {
     // Set up auth state change listener
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth state changed:', event, session ? 'Has session' : 'No session')
         setUser(session?.user ?? null)
       }
     )
@@ -63,21 +65,27 @@ export default function AuthButton() {
 
   const handleSignOut = async () => {
     try {
-      // Use the API route for sign out
-      await fetch('/api/auth/signout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      // Use the Supabase client directly for signout
+      const { error } = await supabase.auth.signOut();
       
-      toast.success("Signed out successfully")
-      router.push('/')
-      router.refresh()
+      if (error) throw error;
+      
+      toast.success("Signed out successfully");
+      
+      // Hard redirect to homepage
+      window.location.href = '/';
     } catch (error) {
-      console.error('Error signing out:', error)
-      toast.error("Error signing out")
+      console.error('Error signing out:', error);
+      toast.error("Error signing out");
     }
+  };
+
+  const handleSignIn = () => {
+    window.location.href = '/auth/signin';
+  }
+  
+  const handleSignUp = () => {
+    window.location.href = '/auth/signup';
   }
 
   if (loading) {
@@ -86,6 +94,7 @@ export default function AuthButton() {
 
   return user ? (
     <DropdownMenu>
+      {/* User dropdown content - unchanged */}
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-8 w-8 rounded-full">
           <Avatar className="h-8 w-8">
@@ -117,15 +126,18 @@ export default function AuthButton() {
     </DropdownMenu>
   ) : (
     <div className="flex items-center gap-2">
-      <Button asChild variant="outline" size="sm">
-        <Link href="/auth/signin">
-          Sign in
-        </Link>
+      <Button 
+        variant="outline" 
+        size="sm" 
+        onClick={handleSignIn}
+      >
+        Sign in
       </Button>
-      <Button asChild size="sm">
-        <Link href="/auth/signup">
-          Sign up
-        </Link>
+      <Button 
+        size="sm" 
+        onClick={handleSignUp}
+      >
+        Sign up
       </Button>
     </div>
   )

@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
+import SignOutButton from '@/components/auth/SignOutButton'
 
 export default async function Dashboard() {
   const supabase = await createClient()
@@ -40,9 +41,7 @@ export default async function Dashboard() {
               </p>
             </div>
             {/* Updated sign out form */}
-            <form action="/api/auth/signout" method="post">
-              <Button type="submit" variant="outline" size="sm">Sign out</Button>
-            </form>
+            <SignOutButton />
           </div>
           
           <Separator className="my-6" />

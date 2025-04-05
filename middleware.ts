@@ -1,4 +1,4 @@
-// middleware.ts - Supabase authentication middleware
+// Updated middleware.ts
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
@@ -32,16 +32,18 @@ export async function middleware(request: NextRequest) {
 
   // Public paths that don't require authentication
   const publicPaths = ['/', '/auth/signin', '/auth/signup', '/auth/callback']
-  const isPublicPath = publicPaths.some(path => 
-    request.nextUrl.pathname === path || 
-    request.nextUrl.pathname.startsWith('/auth/callback') ||
-    request.nextUrl.pathname.startsWith('/api/auth')
-  )
+  
+  // Check if the current path is a public path
+  const isPublicPath = publicPaths.includes(request.nextUrl.pathname) || 
+                       request.nextUrl.pathname.startsWith('/auth/callback') || 
+                       request.nextUrl.pathname.startsWith('/api/auth')
 
   // Protected routes that require authentication
   const protectedPaths = ['/dashboard', '/profile']
+  
+  // Check if the current path is a protected path
   const isProtectedPath = protectedPaths.some(path =>
-    request.nextUrl.pathname.startsWith(path)
+    request.nextUrl.pathname === path || request.nextUrl.pathname.startsWith(path)
   )
 
   // If trying to access a protected path without a session, redirect to signin
@@ -49,9 +51,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/auth/signin', request.url))
   }
 
-  // If already authenticated and trying to access auth pages, redirect to dashboard
-  if (session && request.nextUrl.pathname.startsWith('/auth') && 
-      !request.nextUrl.pathname.includes('/callback')) {
+  // If already authenticated and trying to access auth pages (except callback), redirect to dashboard
+  if (session && (request.nextUrl.pathname === '/auth/signin' || request.nextUrl.pathname === '/auth/signup')) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
