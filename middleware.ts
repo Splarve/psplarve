@@ -1,10 +1,27 @@
-// Updated middleware.ts
+// middleware.ts
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { securityMiddleware } from '@/middleware/security'
 
 export async function middleware(request: NextRequest) {
+  // First, apply security middleware
+  const securityResponse = securityMiddleware(request)
+  
+  // If security middleware returned a response, return it
+  if (securityResponse.status !== 200) {
+    return securityResponse
+  }
+  
+  // Otherwise, continue with the normal flow
   let response = NextResponse.next({
-    request,
+    request: {
+      headers: request.headers,
+    },
+  })
+
+  // Merge security headers with our response
+  securityResponse.headers.forEach((value, key) => {
+    response.headers.set(key, value)
   })
 
   const supabase = createServerClient(
@@ -28,6 +45,7 @@ export async function middleware(request: NextRequest) {
     }
   )
 
+  // Get session using Supabase client
   const { data: { session } } = await supabase.auth.getSession()
 
   // Public paths that don't require authentication

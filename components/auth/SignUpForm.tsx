@@ -1,24 +1,31 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ArrowRight, Loader2 } from 'lucide-react'
 import { toast } from "sonner"
+import { useRouter } from 'next/navigation'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Separator } from '@/components/ui/separator'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { InfoIcon } from 'lucide-react'
 
-// Form schema
+// Form schema with stronger validation
 const signUpSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid email address' }),
-  password: z.string().min(6, { message: 'Password must be at least 6 characters' }),
+  password: z.string()
+    .min(8, { message: 'Password must be at least 8 characters' })
+    .regex(/[A-Z]/, { message: 'Password must contain at least one uppercase letter' })
+    .regex(/[a-z]/, { message: 'Password must contain at least one lowercase letter' })
+    .regex(/[0-9]/, { message: 'Password must contain at least one number' }),
   confirm: z.string(),
 }).refine((data) => data.password === data.confirm, {
   message: "Passwords don't match",
@@ -29,7 +36,9 @@ type SignUpValues = z.infer<typeof signUpSchema>
 
 export default function SignUpForm() {
   const [isLoading, setIsLoading] = useState(false)
-  const supabase = createClient()
+  const [authError, setAuthError] = useState<string | null>(null)
+  const supabase = createClient() // Only used for OAuth, not password auth
+  const router = useRouter()
 
   const form = useForm<SignUpValues>({
     resolver: zodResolver(signUpSchema),
@@ -42,24 +51,38 @@ export default function SignUpForm() {
 
   async function onSubmit(values: SignUpValues) {
     setIsLoading(true)
+    setAuthError(null)
     
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email: values.email,
-        password: values.password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+      // Using server-side API for registration
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          email: values.email,
+          password: values.password
+        }),
       })
       
-      if (error) {
-        throw error
+      const data = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Sign up failed')
       }
 
       toast.success("Account created", {
         description: "Check your email for the confirmation link!"
       })
+      
+      // Reset form on success
+      form.reset()
+      
+      // Use query parameter approach for email
+      window.location.href = `/auth/confirmation?email=${encodeURIComponent(values.email)}`
     } catch (error: any) {
+      setAuthError(error.message)
       toast.error("Sign up failed", {
         description: error.message || 'An error occurred during sign up'
       })
@@ -72,6 +95,7 @@ export default function SignUpForm() {
     setIsLoading(true)
     
     try {
+      // OAuth is still handled by Supabase client library
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -104,6 +128,16 @@ export default function SignUpForm() {
       </CardHeader>
       
       <CardContent className="space-y-4">
+        {authError && (
+          <Alert variant="destructive">
+            <InfoIcon className="h-4 w-4" />
+            <AlertTitle>Registration Error</AlertTitle>
+            <AlertDescription>
+              {authError}
+            </AlertDescription>
+          </Alert>
+        )}
+      
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField

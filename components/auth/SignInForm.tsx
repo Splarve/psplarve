@@ -1,13 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ArrowRight, Loader2 } from 'lucide-react'
 import { toast } from "sonner"
+import { createClient } from '@/lib/supabase/client'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,7 +29,8 @@ type SignInValues = z.infer<typeof signInSchema>
 export default function SignInForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
-  const supabase = createClient()
+  const router = useRouter()
+  const supabase = createClient() // Only used for OAuth - not for password auth
 
   const form = useForm<SignInValues>({
     resolver: zodResolver(signInSchema),
@@ -43,40 +45,30 @@ export default function SignInForm() {
     setAuthError(null)
     
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: values.email,
-        password: values.password,
+      // Using server-side API for authentication
+      const response = await fetch('/api/auth/signin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(values),
       })
       
-      if (error) {
-        // Check if the error might be related to OAuth vs password accounts
-        if (error.message.includes('Invalid login credentials') || 
-            error.message.includes('Email not confirmed')) {
-          // Try to check if the user exists with OAuth
-          const { data: oauthData } = await supabase.auth.signInWithOAuth({
-            provider: 'google',
-            options: {
-              redirectTo: `${window.location.origin}/auth/callback`,
-              queryParams: {
-                prompt: 'select_account'
-              }
-            },
-          })
-          
-          setAuthError("It looks like you might have signed up with Google. Please use the Google sign-in option below.")
-          setIsLoading(false)
-          return
-        }
-        
-        throw error
+      const data = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Authentication failed')
       }
       
       toast.success("Successfully signed in", {
         description: "Redirecting to dashboard..."
       })
       
-      window.location.href = '/dashboard'
+      // Refresh to ensure auth state is updated
+      router.refresh()
+      router.push('/dashboard')
     } catch (error: any) {
+      setAuthError(error.message)
       toast.error("Authentication failed", {
         description: error.message || 'An error occurred during sign in'
       })
@@ -89,6 +81,7 @@ export default function SignInForm() {
     setIsLoading(true)
     
     try {
+      // OAuth is still handled by Supabase client library
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
