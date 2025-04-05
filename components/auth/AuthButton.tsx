@@ -52,7 +52,6 @@ export default function AuthButton() {
     // Set up auth state change listener
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state changed:', event, session ? 'Has session' : 'No session')
         setUser(session?.user ?? null)
       }
     )
@@ -64,7 +63,7 @@ export default function AuthButton() {
 
   const handleSignOut = async () => {
     try {
-      // Use the API route for consistent behavior
+      // Use the API route for sign out
       await fetch('/api/auth/signout', {
         method: 'POST',
         headers: {

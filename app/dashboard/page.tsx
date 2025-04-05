@@ -31,7 +31,7 @@ export default async function Dashboard() {
     <div className="min-h-screen bg-muted/40">
       <div className="py-6 md:py-10 container">
         <div className="max-w-4xl mx-auto">
-          {/* Dashboard Header */}
+          {/* Dashboard Header with app title and sign out button */}
           <div className="flex justify-between items-center mb-6">
             <div>
               <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
@@ -39,7 +39,7 @@ export default async function Dashboard() {
                 Welcome back, {profile?.full_name || user.email?.split('@')[0]}
               </p>
             </div>
-            {/* Updated sign out form with button type */}
+            {/* Updated sign out form */}
             <form action="/api/auth/signout" method="post">
               <Button type="submit" variant="outline" size="sm">Sign out</Button>
             </form>

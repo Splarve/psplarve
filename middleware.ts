@@ -31,17 +31,27 @@ export async function middleware(request: NextRequest) {
   const { data: { session } } = await supabase.auth.getSession()
 
   // Public paths that don't require authentication
-  const publicPaths = ['/', '/auth/signin', '/auth/signup', '/auth/callback', '/api/auth/callback']
+  const publicPaths = ['/', '/auth/signin', '/auth/signup', '/auth/callback']
   const isPublicPath = publicPaths.some(path => 
     request.nextUrl.pathname === path || 
-    request.nextUrl.pathname.startsWith('/api/auth/callback')
+    request.nextUrl.pathname.startsWith('/auth/callback') ||
+    request.nextUrl.pathname.startsWith('/api/auth')
   )
 
-  if (!session && !isPublicPath) {
+  // Protected routes that require authentication
+  const protectedPaths = ['/dashboard', '/profile']
+  const isProtectedPath = protectedPaths.some(path =>
+    request.nextUrl.pathname.startsWith(path)
+  )
+
+  // If trying to access a protected path without a session, redirect to signin
+  if (!session && isProtectedPath) {
     return NextResponse.redirect(new URL('/auth/signin', request.url))
   }
 
-  if (session && request.nextUrl.pathname.startsWith('/auth') && !request.nextUrl.pathname.includes('/callback')) {
+  // If already authenticated and trying to access auth pages, redirect to dashboard
+  if (session && request.nextUrl.pathname.startsWith('/auth') && 
+      !request.nextUrl.pathname.includes('/callback')) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 

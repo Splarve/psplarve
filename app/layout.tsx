@@ -1,6 +1,5 @@
 import './globals.css'
 import { Inter } from 'next/font/google'
-import NavBar from '@/components/Navbar'
 import { Toaster } from '@/components/ui/toaster'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' })
@@ -19,7 +18,6 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased`}>
         <div className="min-h-screen flex flex-col bg-background">
-          <NavBar />
           <div className="flex-1">{children}</div>
         </div>
         <Toaster />
