@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { LogOut, User } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { toast } from "sonner"
 
 import {
   DropdownMenu,
@@ -25,24 +26,33 @@ export default function AuthButton() {
   const router = useRouter()
 
   useEffect(() => {
-    const getUser = async () => {
+    // Initial auth state check
+    const initializeAuth = async () => {
       try {
-        const { data: { user }, error } = await supabase.auth.getUser()
-        if (error) {
-          throw error
+        // First check if there's an existing session
+        const { data: sessionData } = await supabase.auth.getSession()
+        
+        // If we have a session, get the user
+        if (sessionData.session) {
+          const { data: userData } = await supabase.auth.getUser()
+          setUser(userData.user)
+        } else {
+          setUser(null)
         }
-        setUser(user)
       } catch (error) {
-        console.error('Error fetching user:', error)
+        console.error('Error initializing auth:', error)
+        setUser(null)
       } finally {
         setLoading(false)
       }
     }
 
-    getUser()
+    initializeAuth()
 
+    // Set up auth state change listener
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth state changed:', event, session ? 'Has session' : 'No session')
         setUser(session?.user ?? null)
       }
     )
@@ -54,10 +64,20 @@ export default function AuthButton() {
 
   const handleSignOut = async () => {
     try {
-      await supabase.auth.signOut()
+      // Use the API route for consistent behavior
+      await fetch('/api/auth/signout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      toast.success("Signed out successfully")
       router.push('/')
+      router.refresh()
     } catch (error) {
       console.error('Error signing out:', error)
+      toast.error("Error signing out")
     }
   }
 

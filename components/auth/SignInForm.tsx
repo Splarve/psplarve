@@ -14,6 +14,8 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Separator } from '@/components/ui/separator'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { InfoIcon } from 'lucide-react'
 
 // Form schema
 const signInSchema = z.object({
@@ -25,6 +27,7 @@ type SignInValues = z.infer<typeof signInSchema>
 
 export default function SignInForm() {
   const [isLoading, setIsLoading] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
   const supabase = createClient()
 
   const form = useForm<SignInValues>({
@@ -37,6 +40,7 @@ export default function SignInForm() {
 
   async function onSubmit(values: SignInValues) {
     setIsLoading(true)
+    setAuthError(null)
     
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -45,6 +49,25 @@ export default function SignInForm() {
       })
       
       if (error) {
+        // Check if the error might be related to OAuth vs password accounts
+        if (error.message.includes('Invalid login credentials') || 
+            error.message.includes('Email not confirmed')) {
+          // Try to check if the user exists with OAuth
+          const { data: oauthData } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+              redirectTo: `${window.location.origin}/auth/callback`,
+              queryParams: {
+                prompt: 'select_account'
+              }
+            },
+          })
+          
+          setAuthError("It looks like you might have signed up with Google. Please use the Google sign-in option below.")
+          setIsLoading(false)
+          return
+        }
+        
         throw error
       }
       
@@ -70,6 +93,9 @@ export default function SignInForm() {
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
+          queryParams: {
+            prompt: 'select_account' // Force Google to show account selector
+          }
         },
       })
       
@@ -98,6 +124,16 @@ export default function SignInForm() {
       </CardHeader>
       
       <CardContent className="space-y-4">
+        {authError && (
+          <Alert variant="destructive">
+            <InfoIcon className="h-4 w-4" />
+            <AlertTitle>Authentication Error</AlertTitle>
+            <AlertDescription>
+              {authError}
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField

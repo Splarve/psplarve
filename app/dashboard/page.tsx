@@ -39,6 +39,7 @@ export default async function Dashboard() {
                 Welcome back, {profile?.full_name || user.email?.split('@')[0]}
               </p>
             </div>
+            {/* Updated sign out form with button type */}
             <form action="/api/auth/signout" method="post">
               <Button type="submit" variant="outline" size="sm">Sign out</Button>
             </form>
