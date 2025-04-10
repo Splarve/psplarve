@@ -151,18 +151,18 @@ export default function CompanyOnboarding() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-gray-900"></div>
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-gray-900"></div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto max-w-4xl p-6">
-      <div className="text-center mb-10">
-        <h1 className="text-3xl font-bold mb-2">Welcome to Splarve</h1>
-        <p className="text-gray-600">
-          Each email can only be used for one workspace. You should either create your own company or accept an invitation.
+    <div className="w-full max-w-lg p-6 bg-white rounded-lg shadow-lg">
+      <div className="text-center mb-8">
+        <h1 className="text-2xl font-bold">Welcome to Splarve</h1>
+        <p className="text-gray-600 text-sm mt-2">
+          Create your own company or accept an invitation to join one.
         </p>
       </div>
 
@@ -172,28 +172,30 @@ export default function CompanyOnboarding() {
         </div>
       )}
 
-      <div className="grid md:grid-cols-2 gap-8">
-        {/* Pending Invitations */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-4">Pending Invitations</h2>
+      <div className="space-y-8">
+        {/* Pending Invitations Section - Always shown */}
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold mb-4 border-b pb-2">Pending Invitations</h2>
           
           {invitations.length === 0 ? (
-            <p className="text-gray-500">You don't have any pending invitations.</p>
+            <div className="py-4 text-center text-gray-500 bg-gray-50 rounded-lg">
+              You don&apos;t have any pending invitations.
+            </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-4 max-h-80 overflow-y-auto p-1">
               {invitations.map((invitation) => (
-                <div key={invitation.id} className="border rounded-lg p-4">
-                  <div className="flex items-center mb-3">
+                <div key={invitation.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                  <div className="flex items-center gap-3 mb-3">
                     {invitation.companies?.logo ? (
                       <Image
                         src={invitation.companies.logo}
                         alt={invitation.companies.name}
-                        width={40}
-                        height={40}
-                        className="rounded-full mr-3"
+                        width={32}
+                        height={32}
+                        className="rounded-full"
                       />
                     ) : (
-                      <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center mr-3">
+                      <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
                         <span className="text-gray-500 font-medium">
                           {invitation.companies?.name?.charAt(0).toUpperCase() || '?'}
                         </span>
@@ -201,35 +203,37 @@ export default function CompanyOnboarding() {
                     )}
                     <div>
                       <h3 className="font-medium">{invitation.companies?.name || 'Unknown Company'}</h3>
-                      <p className="text-sm text-gray-500">@{invitation.companies?.handle || 'unknown'}</p>
+                      <p className="text-xs text-gray-500">@{invitation.companies?.handle || 'unknown'}</p>
                     </div>
                   </div>
                   
-                  <p className="text-sm mb-2">
-                    <span className="font-medium">From:</span> {invitation.from_email}
-                  </p>
-                  <p className="text-sm mb-2">
-                    <span className="font-medium">Role:</span> {invitation.role}
-                  </p>
+                  <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                    <div>
+                      <span className="text-gray-500">From:</span> {invitation.from_email}
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Role:</span> {invitation.role}
+                    </div>
+                  </div>
                   
                   {invitation.message && (
-                    <p className="text-sm mb-4 bg-gray-50 p-2 rounded">
+                    <p className="text-xs mb-3 bg-gray-50 p-2 rounded">
                       {invitation.message}
                     </p>
                   )}
                   
-                  <div className="flex space-x-2 mt-4">
+                  <div className="flex gap-2 mt-3">
                     <button
                       onClick={() => handleInvitationResponse(invitation.id, true)}
                       disabled={respondingToInvitation}
-                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm transition-colors flex-1"
+                      className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-sm transition-colors flex-1"
                     >
                       Accept
                     </button>
                     <button
                       onClick={() => handleInvitationResponse(invitation.id, false)}
                       disabled={respondingToInvitation}
-                      className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-md text-sm transition-colors flex-1"
+                      className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-3 py-1.5 rounded text-sm transition-colors flex-1"
                     >
                       Decline
                     </button>
@@ -241,11 +245,11 @@ export default function CompanyOnboarding() {
         </div>
 
         {/* Create Company Form */}
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-4">Create Your Company</h2>
+        <div>
+          <h2 className="text-lg font-semibold mb-4 border-b pb-2">Create Your Company</h2>
           
-          <form onSubmit={handleCreateCompany}>
-            <div className="mb-4">
+          <form onSubmit={handleCreateCompany} className="space-y-4">
+            <div>
               <label htmlFor="companyName" className="block text-sm font-medium text-gray-700 mb-1">
                 Company Name
               </label>
@@ -254,41 +258,37 @@ export default function CompanyOnboarding() {
                 id="companyName"
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Acme Inc."
-                required
+                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Your Company Name"
               />
             </div>
             
-            <div className="mb-6">
+            <div>
               <label htmlFor="companyHandle" className="block text-sm font-medium text-gray-700 mb-1">
-                Company Handle (URL identifier)
+                Company Handle
               </label>
-              <div className="flex items-center">
-                <span className="text-gray-500 bg-gray-100 px-3 py-2 border border-r-0 border-gray-300 rounded-l-md">
+              <div className="flex">
+                <span className="inline-flex items-center px-3 bg-gray-100 text-gray-500 border border-r-0 rounded-l-md">
                   @
                 </span>
                 <input
                   type="text"
                   id="companyHandle"
                   value={companyHandle}
-                  onChange={(e) => setCompanyHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-r-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="acme"
-                  pattern="[a-z0-9_-]+"
-                  title="Lowercase letters, numbers, underscores and hyphens only"
-                  required
+                  onChange={(e) => setCompanyHandle(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-r-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="company-handle"
                 />
               </div>
-              <p className="mt-1 text-sm text-gray-500">
-                Only lowercase letters, numbers, underscores and hyphens.
+              <p className="text-xs text-gray-500 mt-1">
+                This will be your company's unique identifier.
               </p>
             </div>
             
             <button
               type="submit"
-              disabled={creatingCompany || !companyName || !companyHandle}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md font-medium transition-colors disabled:bg-blue-300"
+              disabled={creatingCompany}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-md transition-colors"
             >
               {creatingCompany ? 'Creating...' : 'Create Company'}
             </button>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { Plus, X, UserPlus, Settings, Mail, Check, UserCog, ChevronDown } from 'lucide-react';
 
 // Types
 type Member = {
@@ -32,6 +33,7 @@ export default function MembersPage() {
   const [error, setError] = useState<string | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   
   // New invitation form state
   const [showInviteForm, setShowInviteForm] = useState(false);
@@ -42,9 +44,28 @@ export default function MembersPage() {
   
   // Role change state
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
-  const [showRoleModal, setShowRoleModal] = useState(false);
-  const [newRole, setNewRole] = useState('');
-  const [roleChangeLoading, setRoleChangeLoading] = useState(false);
+  const [roleMenuOpen, setRoleMenuOpen] = useState<string | null>(null);
+  const [roleChangeLoading, setRoleChangeLoading] = useState<string | null>(null);
+
+  // Role options
+  const roleOptions = ['Admin', 'Manager', 'HR', 'Member', 'Guest'];
+  
+  // Filter role options based on user's role for the invitation
+  const availableRoles = roleOptions.filter(r => {
+    // Admins can assign any role
+    if (userRole === 'Admin') return true;
+    
+    // Others can only assign lower roles
+    const roleHierarchy = {
+      'Admin': 1,
+      'Manager': 2,
+      'HR': 3,
+      'Member': 4,
+      'Guest': 5
+    };
+    
+    return (roleHierarchy as any)[r] > (roleHierarchy as any)[userRole as keyof typeof roleHierarchy];
+  });
 
   // Fetch members and invitations
   useEffect(() => {
@@ -68,6 +89,7 @@ export default function MembersPage() {
         
         setCompanyId(profileData.profile.company_id);
         setUserRole(profileData.profile.role);
+        setCurrentUserEmail(profileData.profile.username);
         
         // Fetch company members
         const membersRes = await fetch(`/api/companies/${profileData.profile.company_id}/members`);
@@ -79,8 +101,8 @@ export default function MembersPage() {
         const membersData = await membersRes.json();
         setMembers(membersData.members);
         
-        // Fetch invitations
-        const invitationsRes = await fetch('/api/invitations');
+        // Fetch invitations - including all statuses
+        const invitationsRes = await fetch('/api/invitations?include_all=true');
         
         if (!invitationsRes.ok) {
           throw new Error('Failed to fetch invitations');
@@ -106,6 +128,20 @@ export default function MembersPage() {
     
     if (!email || !role || !companyId) {
       setError('Email and role are required');
+      return;
+    }
+    
+    // Check if the email is already a member or invited
+    const isMember = members.some(member => member.username.toLowerCase() === email.toLowerCase());
+    const isInvited = invitations.some(invite => invite.to_email.toLowerCase() === email.toLowerCase());
+    
+    if (isMember) {
+      setError('This user is already a member of your company');
+      return;
+    }
+    
+    if (isInvited) {
+      setError('This user has already been invited');
       return;
     }
     
@@ -175,13 +211,11 @@ export default function MembersPage() {
   }
 
   // Handle changing a member's role
-  async function changeRole() {
-    if (!selectedMember || !newRole || !companyId) {
-      return;
-    }
+  async function changeRole(memberId: string, newRole: string) {
+    if (!companyId) return;
     
     try {
-      setRoleChangeLoading(true);
+      setRoleChangeLoading(memberId);
       setError(null);
       
       const response = await fetch(`/api/companies/${companyId}/members`, {
@@ -190,7 +224,7 @@ export default function MembersPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          memberId: selectedMember.id,
+          memberId,
           newRole,
         }),
       });
@@ -203,24 +237,38 @@ export default function MembersPage() {
       
       // Update member in the list
       setMembers(members.map(member => 
-        member.id === selectedMember.id ? { ...member, role: newRole } : member
+        member.id === memberId ? { ...member, role: newRole } : member
       ));
       
-      // Close modal
-      setShowRoleModal(false);
-      setSelectedMember(null);
+      // Close role menu
+      setRoleMenuOpen(null);
       
     } catch (err) {
       console.error('Error changing role:', err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
     } finally {
-      setRoleChangeLoading(false);
+      setRoleChangeLoading(null);
     }
   }
 
   // Handle removing a member from the company
   async function removeMember(member: Member) {
-    if (!confirm(`Are you sure you want to remove ${member.username} from the company?`)) {
+    // Count admins to ensure at least one remains
+    const adminCount = members.filter(m => m.role === 'Admin').length;
+    
+    // If trying to remove an Admin and there's only one admin, prevent removal
+    if (member.role === 'Admin' && adminCount <= 1) {
+      setError('Cannot remove the last admin. Please promote another member to Admin first.');
+      return;
+    }
+    
+    // Prepare different confirmation messages for self-removal vs removing others
+    const isCurrentUser = member.id === members.find(m => m.username === currentUserEmail)?.id;
+    const confirmMessage = isCurrentUser
+      ? 'Are you sure you want to leave this company? You will be redirected to the onboarding page.'
+      : `Are you sure you want to remove ${member.username} from the company?`;
+    
+    if (!confirm(confirmMessage)) {
       return;
     }
     
@@ -238,349 +286,303 @@ export default function MembersPage() {
       // Remove member from the list
       setMembers(members.filter(m => m.id !== member.id));
       
+      // If the user removed themselves, redirect to onboarding
+      if (data.isSelfRemoval) {
+        router.push('/onboarding');
+        return;
+      }
+      
     } catch (err) {
       console.error('Error removing member:', err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
     }
   }
+  
+  // Close role menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (roleMenuOpen && !(event.target as HTMLElement).closest('.role-menu-container')) {
+        setRoleMenuOpen(null);
+      }
+    }
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [roleMenuOpen]);
 
   // Check if user can manage roles (only Admin can)
   const canManageRoles = userRole === 'Admin';
   
-  // Role options for the invitation form
-  const roleOptions = ['Admin', 'Manager', 'HR', 'Member', 'Guest'];
-  
-  // Filter role options based on user's role for the invitation
-  const availableRoles = roleOptions.filter(r => {
-    // Admins can assign any role
-    if (userRole === 'Admin') return true;
-    
-    // Others can only assign lower roles
-    const roleHierarchy = {
-      'Admin': 1,
-      'Manager': 2,
-      'HR': 3,
-      'Member': 4,
-      'Guest': 5
-    };
-    
-    return roleHierarchy[r as keyof typeof roleHierarchy] > 
-           roleHierarchy[userRole as keyof typeof roleHierarchy];
-  });
-
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-gray-900"></div>
+      <div className="flex items-center justify-center h-full">
+        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-gray-900"></div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto py-8 px-4 max-w-6xl">
-      <h1 className="text-2xl font-bold mb-6">Company Members</h1>
-      
+    <div className="max-w-4xl mx-auto">
       {error && (
-        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
-          <p>{error}</p>
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4" role="alert">
+          <span className="block sm:inline">{error}</span>
         </div>
       )}
-      
+
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Team Members</h1>
+        {canManageRoles && (
+          <button
+            onClick={() => setShowInviteForm(true)}
+            className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-md transition-colors"
+          >
+            <UserPlus className="h-4 w-4" />
+            <span>Invite Member</span>
+          </button>
+        )}
+      </div>
+
       {/* Members List */}
-      <div className="bg-white shadow rounded-lg mb-8">
-        <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <h2 className="text-lg font-medium">Members ({members.length})</h2>
+      <div className="bg-white rounded-lg shadow mb-6">
+        <div className="p-4 border-b flex justify-between items-center">
+          <h2 className="text-lg font-medium">Team Members</h2>
+          <span className="bg-gray-100 text-gray-700 text-sm px-2 py-1 rounded-full">
+            {members.length} {members.length === 1 ? 'member' : 'members'}
+          </span>
         </div>
         
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Member
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Role
-                </th>
-                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {members.map((member) => (
-                <tr key={member.id}>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="flex-shrink-0 h-10 w-10">
-                        {member.avatar ? (
-                          <Image
-                            className="h-10 w-10 rounded-full"
-                            src={member.avatar}
-                            alt={member.username}
-                            width={40}
-                            height={40}
-                          />
-                        ) : (
-                          <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
-                            <span className="text-gray-600 font-medium">
-                              {member.username.charAt(0).toUpperCase()}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">{member.username}</div>
-                      </div>
+        <ul className="divide-y">
+          {members.map((member) => (
+            <li key={member.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
+              <div className="flex items-center">
+                <div className="h-10 w-10 rounded-full bg-gray-200 flex-shrink-0 overflow-hidden">
+                  {member.avatar ? (
+                    <Image 
+                      src={member.avatar} 
+                      alt={member.username}
+                      width={40}
+                      height={40}
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center text-gray-500 font-medium">
+                      {member.username.charAt(0).toUpperCase()}
                     </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                  )}
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium">{member.username}</p>
+                  <p className="text-xs text-gray-500">
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full mr-2 text-xs
                       ${member.role === 'Admin' ? 'bg-purple-100 text-purple-800' : 
-                        member.role === 'Manager' ? 'bg-blue-100 text-blue-800' : 
-                        member.role === 'HR' ? 'bg-green-100 text-green-800' : 
-                        member.role === 'Member' ? 'bg-yellow-100 text-yellow-800' : 
-                        'bg-gray-100 text-gray-800'}`}
+                      member.role === 'Manager' ? 'bg-blue-100 text-blue-800' : 
+                      member.role === 'HR' ? 'bg-green-100 text-green-800' : 
+                      member.role === 'Member' ? 'bg-yellow-100 text-yellow-800' : 
+                      'bg-gray-100 text-gray-800'}`}
                     >
                       {member.role}
                     </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    {canManageRoles && (
-                      <button
-                        onClick={() => {
-                          setSelectedMember(member);
-                          setNewRole(member.role);
-                          setShowRoleModal(true);
-                        }}
-                        className="text-indigo-600 hover:text-indigo-900 mr-4"
-                      >
-                        Change Role
-                      </button>
-                    )}
-                    {(canManageRoles || (member.user_id === members.find(m => m.role === 'Admin')?.user_id)) && (
-                      <button
-                        onClick={() => removeMember(member)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      
-      {/* Invitations */}
-      <div className="bg-white shadow rounded-lg mb-8">
-        <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <h2 className="text-lg font-medium">Invitations ({invitations.length})</h2>
-          <button
-            onClick={() => setShowInviteForm(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            Invite New Member
-          </button>
-        </div>
-        
-        {invitations.length === 0 ? (
-          <div className="p-6 text-center text-gray-500">
-            No pending invitations
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Role
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date Sent
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {invitations.map((invitation) => (
-                  <tr key={invitation.id}>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{invitation.to_email}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                        ${invitation.role === 'Admin' ? 'bg-purple-100 text-purple-800' : 
-                          invitation.role === 'Manager' ? 'bg-blue-100 text-blue-800' : 
-                          invitation.role === 'HR' ? 'bg-green-100 text-green-800' : 
-                          invitation.role === 'Member' ? 'bg-yellow-100 text-yellow-800' : 
-                          'bg-gray-100 text-gray-800'}`}
-                      >
-                        {invitation.role}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
-                        ${invitation.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
-                          invitation.status === 'accepted' ? 'bg-green-100 text-green-800' : 
-                          'bg-red-100 text-red-800'}`}
-                      >
-                        {invitation.status.charAt(0).toUpperCase() + invitation.status.slice(1)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(invitation.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      {invitation.status === 'pending' && (
-                        <button
-                          onClick={() => cancelInvitation(invitation.id)}
-                          className="text-red-600 hover:text-red-900"
-                        >
-                          Cancel
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-      
-      {/* Invite Form Modal */}
-      {showInviteForm && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-            <div className="px-6 py-4 border-b">
-              <h3 className="text-lg font-medium">Invite New Member</h3>
-            </div>
-            
-            <form onSubmit={sendInvitation}>
-              <div className="p-6">
-                <div className="mb-4">
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                    Email Address
-                  </label>
-                  <input
-                    type="email"
-                    id="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    required
-                  />
-                </div>
-                
-                <div className="mb-4">
-                  <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">
-                    Role
-                  </label>
-                  <select
-                    id="role"
-                    value={role}
-                    onChange={(e) => setRole(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    required
-                  >
-                    {availableRoles.map((r) => (
-                      <option key={r} value={r}>{r}</option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div className="mb-4">
-                  <label htmlFor="message" className="block text-sm font-medium text-gray-700 mb-1">
-                    Message (Optional)
-                  </label>
-                  <textarea
-                    id="message"
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
+                  </p>
                 </div>
               </div>
               
-              <div className="px-6 py-4 bg-gray-50 flex justify-end space-x-2 rounded-b-lg">
+              {/* Member actions - update to allow removing other admins if there are multiple */}
+              {canManageRoles && (
+                <div className="flex gap-2">
+                  {member.role !== 'Admin' && (
+                    <div className="relative role-menu-container">
+                      <button
+                        onClick={() => setRoleMenuOpen(roleMenuOpen === member.id ? null : member.id)}
+                        className={`text-gray-600 hover:text-blue-600 p-2 rounded hover:bg-gray-100 flex items-center gap-1 ${roleMenuOpen === member.id ? 'bg-gray-100 text-blue-600' : ''}`}
+                        title="Change role"
+                      >
+                        {roleChangeLoading === member.id ? (
+                          <div className="h-4 w-4 border-t-2 border-b-2 border-blue-600 rounded-full animate-spin" />
+                        ) : (
+                          <>
+                            <span className="text-xs">{member.role}</span>
+                            <ChevronDown className="h-4 w-4" />
+                          </>
+                        )}
+                      </button>
+                      
+                      {roleMenuOpen === member.id && (
+                        <div className="absolute right-0 mt-1 w-36 bg-white rounded-md shadow-lg z-10 py-1 border">
+                          {availableRoles.map(r => (
+                            <button
+                              key={r}
+                              onClick={() => {
+                                if (r !== member.role) {
+                                  changeRole(member.id, r);
+                                } else {
+                                  setRoleMenuOpen(null);
+                                }
+                              }}
+                              className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${r === member.role ? 'bg-gray-50 text-blue-600 font-medium' : 'text-gray-700'}`}
+                              disabled={roleChangeLoading === member.id}
+                            >
+                              {r}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  <button
+                    onClick={() => removeMember(member)}
+                    className="text-gray-600 hover:text-red-600 p-1 rounded-full hover:bg-gray-100"
+                    title="Remove member"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Invitations */}
+      {invitations.length > 0 && (
+        <div className="bg-white rounded-lg shadow mb-6">
+          <div className="p-4 border-b flex justify-between items-center">
+            <h2 className="text-lg font-medium">Invitations</h2>
+            <span className="bg-gray-100 text-gray-700 text-sm px-2 py-1 rounded-full">
+              {invitations.length} {invitations.length === 1 ? 'invitation' : 'invitations'}
+            </span>
+          </div>
+          
+          <ul className="divide-y">
+            {invitations.map((invitation) => (
+              <li key={invitation.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
+                <div className="flex items-center">
+                  <div className="h-10 w-10 bg-blue-100 text-blue-600 rounded-full flex-shrink-0 flex items-center justify-center">
+                    <Mail className="h-5 w-5" />
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm font-medium">{invitation.to_email}</p>
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs
+                        ${invitation.role === 'Admin' ? 'bg-purple-100 text-purple-800' : 
+                        invitation.role === 'Manager' ? 'bg-blue-100 text-blue-800' : 
+                        invitation.role === 'HR' ? 'bg-green-100 text-green-800' : 
+                        invitation.role === 'Member' ? 'bg-yellow-100 text-yellow-800' : 
+                        'bg-gray-100 text-gray-800'}`}
+                      >
+                        {invitation.role}
+                      </span>
+                      <span className={`inline-flex items-center px-2 py-1 text-xs rounded-full
+                        ${invitation.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
+                        invitation.status === 'accepted' ? 'bg-green-100 text-green-800' : 
+                        'bg-red-100 text-red-800'}`}
+                      >
+                        {invitation.status.charAt(0).toUpperCase() + invitation.status.slice(1)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                {canManageRoles && invitation.status === 'pending' && (
+                  <button
+                    onClick={() => cancelInvitation(invitation.id)}
+                    className="text-gray-600 hover:text-red-600 p-1 rounded-full hover:bg-gray-100"
+                    title="Cancel invitation"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Invite Form Modal */}
+      {showInviteForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium">Invite New Member</h3>
+              <button
+                onClick={() => setShowInviteForm(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={sendInvitation} className="space-y-4">
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  id="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="colleague@example.com"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">
+                  Role
+                </label>
+                <select
+                  id="role"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  {availableRoles.map(r => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label htmlFor="message" className="block text-sm font-medium text-gray-700 mb-1">
+                  Message (Optional)
+                </label>
+                <textarea
+                  id="message"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Join our team..."
+                  rows={3}
+                />
+              </div>
+              
+              <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowInviteForm(false)}
-                  className="bg-white border border-gray-300 rounded-md px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  className="px-4 py-2 border rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={inviteLoading}
-                  className="bg-blue-600 border border-transparent rounded-md px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-300"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors flex items-center"
                 >
-                  {inviteLoading ? 'Sending...' : 'Send Invitation'}
+                  {inviteLoading ? 'Sending...' : (
+                    <>
+                      <Check className="h-4 w-4 mr-1" />
+                      Send Invitation
+                    </>
+                  )}
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-      
-      {/* Role Change Modal */}
-      {showRoleModal && selectedMember && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-            <div className="px-6 py-4 border-b">
-              <h3 className="text-lg font-medium">Change Role for {selectedMember.username}</h3>
-            </div>
-            
-            <div className="p-6">
-              <div className="mb-4">
-                <label htmlFor="newRole" className="block text-sm font-medium text-gray-700 mb-1">
-                  New Role
-                </label>
-                <select
-                  id="newRole"
-                  value={newRole}
-                  onChange={(e) => setNewRole(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                >
-                  {roleOptions.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            
-            <div className="px-6 py-4 bg-gray-50 flex justify-end space-x-2 rounded-b-lg">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowRoleModal(false);
-                  setSelectedMember(null);
-                }}
-                className="bg-white border border-gray-300 rounded-md px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={changeRole}
-                disabled={roleChangeLoading || newRole === selectedMember.role}
-                className="bg-blue-600 border border-transparent rounded-md px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-300"
-              >
-                {roleChangeLoading ? 'Updating...' : 'Update Role'}
-              </button>
-            </div>
           </div>
         </div>
       )}

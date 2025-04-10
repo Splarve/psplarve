@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import CompanyOnboarding from '@/components/onboarding/CompanyOnboarding';
+import AuthButton from '@/components/auth/AuthButton';
 
 export default async function OnboardingPage() {
   const supabase = await createClient();
@@ -15,8 +16,11 @@ export default async function OnboardingPage() {
 
   // The actual onboarding UI is handled by the client-side component
   return (
-    <main className="min-h-screen bg-gray-50 py-12">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <div className="absolute top-4 right-6">
+        <AuthButton />
+      </div>
       <CompanyOnboarding />
-    </main>
+    </div>
   );
 } 

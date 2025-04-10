@@ -4,13 +4,12 @@ import AuthButton from '@/components/auth/AuthButton'
 
 export default function Home() {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen py-2">
-      <header className="w-full max-w-4xl flex justify-between items-center p-4">
-        <h1 className="text-2xl font-bold">Next.js + Supabase Auth</h1>
+    <div className="min-h-screen flex flex-col items-center justify-center px-4">
+      <div className="absolute top-4 right-6">
         <AuthButton />
-      </header>
-
-      <main className="flex flex-col items-center justify-center flex-1 px-20 text-center">
+      </div>
+      
+      <main className="flex flex-col items-center justify-center text-center">
         <h1 className="text-6xl font-bold">
           Welcome to{' '}
           <span className="text-indigo-600">Supabase Auth Demo</span>

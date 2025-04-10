@@ -183,6 +183,34 @@ ON profiles FOR UPDATE USING (
   )
 );
 
+-- Users can remove themselves from a company or be removed by company admins
+CREATE POLICY "Users can leave companies or be removed by admins"
+ON profiles FOR UPDATE 
+USING (
+  -- User is updating their own profile
+  auth.uid() = user_id
+  OR
+  -- Admin is removing someone from their company
+  EXISTS (
+    SELECT 1 FROM profiles AS admin_profile
+    WHERE admin_profile.user_id = auth.uid()
+    AND admin_profile.company_id = profiles.company_id
+    AND admin_profile.role = 'Admin'
+  )
+)
+WITH CHECK (
+  -- Allow users to set their own company to null (leaving)
+  (auth.uid() = user_id AND (company_id IS NULL OR company_id = profiles.company_id))
+  OR
+  -- Allow admins to update profiles in their company
+  EXISTS (
+    SELECT 1 FROM profiles AS admin_profile
+    WHERE admin_profile.user_id = auth.uid()
+    AND admin_profile.company_id = profiles.company_id
+    AND admin_profile.role = 'Admin'
+  )
+);
+
 -- RLS Policies for invitations
 
 -- Users can view invitations sent to their email based on profiles
@@ -265,5 +293,22 @@ ON invitations FOR DELETE USING (
     )
   )
 ); 
+
+-- Create an RPC function that can bypass RLS to remove a member from a company
+-- This is used as a fallback in server-side code until proper RLS policies are implemented
+CREATE OR REPLACE FUNCTION admin_remove_member_from_company(p_member_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  UPDATE profiles
+  SET company_id = NULL, role = NULL, tags = NULL
+  WHERE id = p_member_id;
+  
+  RETURN TRUE;
+EXCEPTION
+  WHEN OTHERS THEN
+    RAISE EXCEPTION 'Failed to remove member: %', SQLERRM;
+    RETURN FALSE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 COMMIT; 

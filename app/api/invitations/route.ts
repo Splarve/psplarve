@@ -145,7 +145,7 @@ export async function GET(request: NextRequest) {
     // Get the user's company
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('company_id')
+      .select('company_id, role')
       .eq('user_id', user.id)
       .single();
 
@@ -156,11 +156,23 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get invitations sent by the user's company
-    const { data: invitations, error: invitationsError } = await supabase
+    // Check if we should include all invitation statuses
+    const url = new URL(request.url);
+    const includeAll = url.searchParams.get('include_all') === 'true';
+    
+    // Build the query
+    let query = supabase
       .from('invitations')
-      .select('*')
+      .select('*, companies(*)')
       .eq('company_id', profile.company_id);
+    
+    // Only include pending invitations unless include_all is true
+    if (!includeAll) {
+      query = query.eq('status', 'pending');
+    }
+    
+    // Get invitations sent by the user's company
+    const { data: invitations, error: invitationsError } = await query;
 
     if (invitationsError) {
       console.error('Error fetching invitations:', invitationsError);

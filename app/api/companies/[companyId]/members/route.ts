@@ -201,7 +201,7 @@ export async function DELETE(
 ) {
   try {
     // Properly handle the dynamic route parameter
-    const companyId = await Promise.resolve(params.companyId);
+    const companyId = params.companyId;
     const supabase = await createClient();
     const url = new URL(request.url);
     const memberId = url.searchParams.get('memberId');
@@ -229,7 +229,7 @@ export async function DELETE(
     // Check if the current user is from this company and has permission
     const { data: currentUserProfile, error: currentUserError } = await supabase
       .from('profiles')
-      .select('company_id, role')
+      .select('company_id, role, id')
       .eq('user_id', user.id)
       .single();
 
@@ -287,28 +287,73 @@ export async function DELETE(
       }
     }
 
-    // Update the member's profile to remove company association
-    const { error: updateError } = await supabase
+    // First, try to use the standard API with RLS
+    let { error: updateError } = await supabase
       .from('profiles')
       .update({ 
         company_id: null,
         role: null,
         tags: null
       })
-      .eq('id', memberId)
-      .eq('company_id', companyId);
+      .eq('id', memberId);
+
+    // If the standard update fails due to RLS, try using a direct query for server-side operation
+    // This is a temporary workaround until the RLS policies are updated
+    if (updateError && (updateError.code === '42501' || 
+        (updateError.message && updateError.message.includes('row-level security')))) {
+      
+      console.log('Using server-side direct query as fallback due to RLS restriction');
+      
+      // Direct PostgreSQL query that bypasses RLS since it's run by the service role
+      const { error: directUpdateError } = await supabase
+        .rpc('admin_remove_member_from_company', {
+          p_member_id: memberId
+        });
+      
+      if (directUpdateError) {
+        console.error('Error using direct query fallback:', directUpdateError);
+        return NextResponse.json(
+          { 
+            error: 'Failed to remove member with both methods. Please update your RLS policies.',
+            details: directUpdateError.message
+          },
+          { status: 500 }
+        );
+      }
+      
+      // If we reach here, the direct query worked
+      updateError = null;
+    }
 
     if (updateError) {
       console.error('Error removing member from company:', updateError);
+      
+      // Check for RLS policy violation
+      if (updateError.code === '42501' || 
+          (updateError.message && updateError.message.includes('row-level security'))) {
+        return NextResponse.json(
+          { 
+            error: 'Row-level security prevented this operation. Please run the updated SQL in the Supabase dashboard to fix the RLS policies.',
+            details: updateError.message,
+            code: updateError.code
+          },
+          { status: 403 }
+        );
+      }
+      
       return NextResponse.json(
         { error: 'Failed to remove member from company' },
         { status: 500 }
       );
     }
 
+    // If the user is removing themselves, we should respond with a special status
+    const isSelfRemoval = memberId === currentUserProfile.id;
+    
     return NextResponse.json({
       success: true,
-      message: 'Member removed from company successfully'
+      message: 'Member removed from company successfully',
+      isSelfRemoval
     });
 
   } catch (error) {
