@@ -49,11 +49,12 @@ CREATE TABLE invitations (
     company_id UUID REFERENCES companies(id) ON DELETE CASCADE NOT NULL,
     message TEXT,
     role TEXT CHECK (role IN ('Admin', 'Manager', 'HR', 'Member', 'Guest')) NOT NULL,
-    status TEXT CHECK (status IN ('pending', 'accepted', 'rejected')) DEFAULT 'pending',
+    status TEXT CHECK (status IN ('pending', 'accepted', 'rejected', 'archived')) DEFAULT 'pending',
+    attempt_count INTEGER DEFAULT 1 NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     sent_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(company_id, to_email)
+    UNIQUE(company_id, to_email, status)
 );
 
 -- Create function to check if user can send invite based on role hierarchy

@@ -23,6 +23,7 @@ type Invitation = {
   status: string;
   message?: string;
   created_at: string;
+  attempt_count: number;
 };
 
 export default function MembersPage() {
@@ -201,8 +202,12 @@ export default function MembersPage() {
         throw new Error(data.error || 'Failed to cancel invitation');
       }
       
-      // Remove invitation from the list
-      setInvitations(invitations.filter(inv => inv.id !== id));
+      // Update invitation in the list to show as 'archived'
+      setInvitations(invitations.map(inv => 
+        inv.id === id 
+          ? { ...inv, status: 'archived' } 
+          : inv
+      ));
       
     } catch (err) {
       console.error('Error canceling invitation:', err);
@@ -315,6 +320,47 @@ export default function MembersPage() {
   // Check if user can manage roles (only Admin can)
   const canManageRoles = userRole === 'Admin';
   
+  // Add a reinvite function to resend rejected invitations
+  async function reinviteUser(invitation: Invitation) {
+    if (!confirm(`Are you sure you want to reinvite ${invitation.to_email}?`)) {
+      return;
+    }
+    
+    try {
+      setError(null);
+      
+      const response = await fetch('/api/invitations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          toEmail: invitation.to_email,
+          companyId,
+          role: invitation.role,
+          message: invitation.message || undefined,
+          reinvite: true,
+          invitationId: invitation.id
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to reinvite user');
+      }
+      
+      // Update the invitation in the list
+      setInvitations(invitations.map(inv => 
+        inv.id === invitation.id ? data.invitation : inv
+      ));
+      
+    } catch (err) {
+      console.error('Error reinviting user:', err);
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -477,22 +523,41 @@ export default function MembersPage() {
                       <span className={`inline-flex items-center px-2 py-1 text-xs rounded-full
                         ${invitation.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
                         invitation.status === 'accepted' ? 'bg-green-100 text-green-800' : 
+                        invitation.status === 'archived' ? 'bg-gray-100 text-gray-800' :
                         'bg-red-100 text-red-800'}`}
                       >
-                        {invitation.status.charAt(0).toUpperCase() + invitation.status.slice(1)}
+                        {invitation.status === 'archived' ? 'Canceled' : invitation.status.charAt(0).toUpperCase() + invitation.status.slice(1)}
                       </span>
+                      {invitation.attempt_count > 1 && (
+                        <span className="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full">
+                          Attempt {invitation.attempt_count}/3
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
                 
-                {canManageRoles && invitation.status === 'pending' && (
-                  <button
-                    onClick={() => cancelInvitation(invitation.id)}
-                    className="text-gray-600 hover:text-red-600 p-1 rounded-full hover:bg-gray-100"
-                    title="Cancel invitation"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
+                {canManageRoles && (
+                  <div className="flex gap-2">
+                    {invitation.status === 'pending' && (
+                      <button
+                        onClick={() => cancelInvitation(invitation.id)}
+                        className="text-gray-600 hover:text-red-600 p-1 rounded-full hover:bg-gray-100"
+                        title="Cancel invitation"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    )}
+                    {(invitation.status === 'rejected' || invitation.status === 'archived') && invitation.attempt_count < 3 && (
+                      <button
+                        onClick={() => reinviteUser(invitation)}
+                        className="text-gray-600 hover:text-blue-600 px-2 py-1 rounded hover:bg-gray-100 text-xs flex items-center gap-1"
+                      >
+                        <Mail className="h-3 w-3" />
+                        <span>Reinvite</span>
+                      </button>
+                    )}
+                  </div>
                 )}
               </li>
             ))}

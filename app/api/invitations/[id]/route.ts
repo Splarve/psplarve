@@ -162,7 +162,7 @@ export async function DELETE(
 ) {
   try {
     // Properly handle the dynamic route parameter
-    const invitationId = await Promise.resolve(params.id);
+    const invitationId = params.id;
     const supabase = await createClient();
     
     // Check if the user is authenticated
@@ -195,7 +195,7 @@ export async function DELETE(
     // Get the invitation
     const { data: invitation, error: invitationError } = await supabase
       .from('invitations')
-      .select('company_id, role')
+      .select('company_id, role, status, attempt_count')
       .eq('id', invitationId)
       .single();
 
@@ -206,8 +206,16 @@ export async function DELETE(
       );
     }
 
-    // Check if user can delete this invitation
-    let canDelete = false;
+    // Only allow canceling pending invitations
+    if (invitation.status !== 'pending') {
+      return NextResponse.json(
+        { error: 'Only pending invitations can be canceled' },
+        { status: 400 }
+      );
+    }
+
+    // Check if user can cancel this invitation
+    let canCancel = false;
     
     // The invitation was sent to this user
     const { data: userInvitation } = await supabase
@@ -218,44 +226,47 @@ export async function DELETE(
       .maybeSingle();
       
     if (userInvitation) {
-      canDelete = true;
+      canCancel = true;
     } else if (profile.company_id === invitation.company_id) {
       // Or user is from the same company and has proper permissions
       if (profile.role === 'Admin' || 
          (profile.role !== 'Member' && profile.role !== 'Guest' && 
           ['Member', 'Guest'].includes(invitation.role))) {
-        canDelete = true;
+        canCancel = true;
       }
     }
 
-    if (!canDelete) {
+    if (!canCancel) {
       return NextResponse.json(
-        { error: 'You do not have permission to delete this invitation' },
+        { error: 'You do not have permission to cancel this invitation' },
         { status: 403 }
       );
     }
 
-    // Delete the invitation
-    const { error: deleteError } = await supabase
+    // Archive the invitation instead of deleting it
+    const { error: updateError } = await supabase
       .from('invitations')
-      .delete()
+      .update({
+        status: 'archived',
+        updated_at: new Date().toISOString()
+      })
       .eq('id', invitationId);
 
-    if (deleteError) {
-      console.error('Error deleting invitation:', deleteError);
+    if (updateError) {
+      console.error('Error archiving invitation:', updateError);
       return NextResponse.json(
-        { error: 'Failed to delete invitation' },
+        { error: 'Failed to cancel invitation' },
         { status: 500 }
       );
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Invitation deleted successfully'
+      message: 'Invitation canceled successfully'
     });
 
   } catch (error) {
-    console.error('Error deleting invitation:', error);
+    console.error('Error canceling invitation:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
