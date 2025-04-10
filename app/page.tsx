@@ -1,5 +1,4 @@
 // app/page.tsx
-import Link from 'next/link'
 import AuthButton from '@/components/auth/AuthButton'
 
 export default function Home() {
