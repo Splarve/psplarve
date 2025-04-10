@@ -94,7 +94,6 @@ export default function AuthButton() {
 
   return user ? (
     <DropdownMenu>
-      {/* User dropdown content - unchanged */}
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-8 w-8 rounded-full">
           <Avatar className="h-8 w-8">
@@ -112,10 +111,10 @@ export default function AuthButton() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link href="/dashboard">Dashboard</Link>
+          <Link href="/profile">Personal Profile</Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link href="/profile">Profile</Link>
+          <Link href="/dashboard">Dashboard</Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={handleSignOut} className="text-red-600">
