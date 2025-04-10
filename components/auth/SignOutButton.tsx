@@ -1,29 +1,31 @@
 // components/auth/SignOutButton.tsx
-'use client'
+"use client";
 
-import { Button } from '@/components/ui/button'
-import { createClient } from '@/lib/supabase/client'
-import { toast } from 'sonner'
+import { useRouter } from "next/navigation";
+import { createBrowserClient } from "@supabase/ssr";
 
 export default function SignOutButton() {
-  const handleSignOut = async () => {
-    try {
-      const supabase = createClient()
-      await supabase.auth.signOut()
-      
-      toast.success("Signed out successfully")
-      
-      // Hard redirect to homepage
-      window.location.href = '/'
-    } catch (error) {
-      console.error('Error signing out:', error)
-      toast.error("Error signing out")
+  const router = useRouter();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  async function handleSignOut() {
+    const { error } = await supabase.auth.signOut();
+    
+    if (!error) {
+      router.push("/auth/signin");
+      router.refresh();
     }
   }
 
   return (
-    <Button onClick={handleSignOut} variant="outline" size="sm">
-      Sign out
-    </Button>
-  )
+    <button
+      onClick={handleSignOut}
+      className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+    >
+      Sign Out
+    </button>
+  );
 }

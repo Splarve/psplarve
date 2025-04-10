@@ -1,137 +1,145 @@
-// app/dashboard/page.tsx
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { ArrowRightIcon, UserIcon, ShieldIcon } from 'lucide-react'
+"use client";
 
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Separator } from '@/components/ui/separator'
-import SignOutButton from '@/components/auth/SignOutButton'
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import SignOutButton from "@/components/auth/SignOutButton";
 
-export default async function Dashboard() {
-  const supabase = await createClient()
-  
-  // Get user using getUser() - best practice compared to getSession
-  const { data: { user }, error } = await supabase.auth.getUser()
-  
-  if (error || !user) {
-    // If there's an error or no user, redirect to sign in
-    redirect('/auth/signin')
+type Profile = {
+  id: string;
+  company_id: string;
+  username: string;
+  avatar?: string;
+  role: string;
+  tags?: any;
+};
+
+type Company = {
+  id: string;
+  handle: string;
+  name: string;
+  logo?: string;
+  description?: string;
+  industry?: string;
+  size?: string;
+};
+
+export default function Dashboard() {
+  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [company, setCompany] = useState<Company | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        const res = await fetch("/api/user/company-status");
+        
+        if (!res.ok) {
+          throw new Error("Failed to fetch user data");
+        }
+        
+        const data = await res.json();
+        
+        if (!data.hasCompany) {
+          router.push("/onboarding");
+          return;
+        }
+        
+        setProfile(data.profile);
+        
+        // Fetch company details
+        if (data.profile.company_id) {
+          const companyRes = await fetch(`/api/companies/${data.profile.company_id}`);
+          
+          if (companyRes.ok) {
+            const companyData = await companyRes.json();
+            setCompany(companyData.company);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching dashboard data:", err);
+        setError(err instanceof Error ? err.message : "An unknown error occurred");
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    fetchData();
+  }, [router]);
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-gray-900"></div>
+      </div>
+    );
   }
-  
-  // Get user profile from database
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
-  
+
   return (
-    <div className="min-h-screen bg-muted/40">
-      <div className="py-6 md:py-10 container">
-        <div className="max-w-4xl mx-auto">
-          {/* Dashboard Header with app title and sign out button */}
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-              <p className="text-muted-foreground mt-1">
-                Welcome back, {profile?.full_name || user.email?.split('@')[0]}
-              </p>
-            </div>
-            {/* Updated sign out form */}
-            <SignOutButton />
+    <div className="container mx-auto py-8 px-4 max-w-6xl">
+      <div className="bg-white shadow-md rounded-lg p-6 mb-8">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold mb-2">
+              {company?.name || "Your Company"} Dashboard
+            </h1>
+            <p className="text-gray-600">
+              Welcome back, {profile?.username}! You are signed in as a {profile?.role}.
+            </p>
           </div>
-          
-          <Separator className="my-6" />
-          
-          {/* User Profile Card */}
-          <Card className="mb-6">
-            <CardHeader>
-              <div className="flex items-center space-x-4">
-                <Avatar className="h-12 w-12">
-                  <AvatarImage src={profile?.avatar_url || user.user_metadata?.avatar_url || ''} />
-                  <AvatarFallback className="bg-primary/10 text-primary">
-                    {(profile?.full_name || user.email || 'U').charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <CardTitle>{profile?.full_name || user.email?.split('@')[0]}</CardTitle>
-                  <CardDescription>{user.email}</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground">User ID</h3>
-                  <p className="text-sm mt-1 font-mono bg-muted p-2 rounded-md overflow-auto">{user.id}</p>
-                </div>
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground">Last Sign In</h3>
-                  <p className="text-sm mt-1">{new Date(user.last_sign_in_at || '').toLocaleString()}</p>
-                </div>
-                {user.app_metadata?.provider && (
-                  <div>
-                    <h3 className="text-sm font-medium text-muted-foreground">Auth Provider</h3>
-                    <p className="text-sm mt-1 capitalize">{user.app_metadata.provider}</p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-          
-          {/* Action Cards */}
-          <div className="grid gap-6 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <UserIcon className="h-5 w-5 mr-2 text-primary" />
-                  Profile Settings
-                </CardTitle>
-                <CardDescription>Update your profile information and preferences</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Customize your profile by adding your full name, profile picture, and other personal details.
-                </p>
-              </CardContent>
-              <CardFooter>
-                <Button asChild className="w-full">
-                  <Link href="/profile/edit">
-                    Edit Profile
-                    <ArrowRightIcon className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
-              </CardFooter>
-            </Card>
-            
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <ShieldIcon className="h-5 w-5 mr-2 text-primary" />
-                  Security Settings
-                </CardTitle>
-                <CardDescription>Manage your account security and password</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Update your password, enable two-factor authentication, and review your recent login activity.
-                </p>
-              </CardContent>
-              <CardFooter>
-                <Button asChild variant="outline" className="w-full">
-                  <Link href="/profile/security">
-                    Security Settings
-                    <ArrowRightIcon className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
-              </CardFooter>
-            </Card>
-          </div>
+          <SignOutButton />
         </div>
       </div>
+
+      {error && (
+        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
+          <p>{error}</p>
+        </div>
+      )}
+
+      <div className="grid md:grid-cols-3 gap-6">
+        {/* Company Management Card */}
+        <Link href="/dashboard/members" className="block">
+          <div className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer">
+            <div className="flex items-center justify-center h-12 w-12 rounded-md bg-blue-500 text-white mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-medium mb-2">Member Management</h3>
+            <p className="text-gray-600">Manage team members, send invitations, and assign roles.</p>
+          </div>
+        </Link>
+
+        {/* Company Profile Card */}
+        <Link href="/dashboard/company" className="block">
+          <div className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer">
+            <div className="flex items-center justify-center h-12 w-12 rounded-md bg-green-500 text-white mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-medium mb-2">Company Profile</h3>
+            <p className="text-gray-600">View and edit your company details, logo, and settings.</p>
+          </div>
+        </Link>
+
+        {/* User Profile Card */}
+        <Link href="/dashboard/profile" className="block">
+          <div className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer">
+            <div className="flex items-center justify-center h-12 w-12 rounded-md bg-purple-500 text-white mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-medium mb-2">Your Profile</h3>
+            <p className="text-gray-600">Update your personal information, avatar, and preferences.</p>
+          </div>
+        </Link>
+      </div>
     </div>
-  )
+  );
 }

@@ -2,6 +2,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { securityMiddleware } from '@/middleware/security'
+import { checkOnboarding } from '@/middleware/onboarding'
 
 export async function middleware(request: NextRequest) {
   // First, apply security middleware
@@ -45,8 +46,9 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Get session using Supabase client
-  const { data: { session } } = await supabase.auth.getSession()
+  // Get user using getUser() instead of session
+  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  const isAuthenticated = !userError && !!user
 
   // Public paths that don't require authentication
   const publicPaths = ['/', '/auth/signin', '/auth/signup', '/auth/callback']
@@ -57,7 +59,7 @@ export async function middleware(request: NextRequest) {
                        request.nextUrl.pathname.startsWith('/api/auth')
 
   // Protected routes that require authentication
-  const protectedPaths = ['/dashboard', '/profile']
+  const protectedPaths = ['/dashboard', '/profile', '/onboarding']
   
   // Check if the current path is a protected path
   const isProtectedPath = protectedPaths.some(path =>
@@ -65,13 +67,21 @@ export async function middleware(request: NextRequest) {
   )
 
   // If trying to access a protected path without a session, redirect to signin
-  if (!session && isProtectedPath) {
+  if (!isAuthenticated && isProtectedPath) {
     return NextResponse.redirect(new URL('/auth/signin', request.url))
   }
 
   // If already authenticated and trying to access auth pages (except callback), redirect to dashboard
-  if (session && (request.nextUrl.pathname === '/auth/signin' || request.nextUrl.pathname === '/auth/signup')) {
+  if (isAuthenticated && (request.nextUrl.pathname === '/auth/signin' || request.nextUrl.pathname === '/auth/signup')) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
+  }
+
+  // Check if the user needs onboarding
+  if (isAuthenticated) {
+    const onboardingRedirect = await checkOnboarding(request)
+    if (onboardingRedirect) {
+      return onboardingRedirect
+    }
   }
 
   return response
